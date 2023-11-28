@@ -1,1 +1,1 @@
-from .server import Server
+from .Server import Server

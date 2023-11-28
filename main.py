@@ -1,5 +1,5 @@
 import time
-import server
+import Server
 
 HOST = "localhost"
 PORT = 65100
@@ -14,7 +14,7 @@ def handleConnection(c):
     return
 
 if __name__ == "__main__":
-    BulletinBoardListener = server.Server(HOST, PORT, handleConnection)
+    BulletinBoardListener = Server.Server(HOST, PORT, handleConnection)
     
     with BulletinBoardListener as BBL:
         t = 0
