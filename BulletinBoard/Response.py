@@ -14,5 +14,5 @@ class Response:
         else:
             self.msg = msg
     
-    def isOK(self):
+    def is_OK(self):
         return self.status == 0
