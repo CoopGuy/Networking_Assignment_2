@@ -1,21 +1,29 @@
-import time
+import time, datetime
+
+from threading import Lock
 from typing import List, Tuple
+
 from Group import Group
 from Message import Message
 from Response import Response
+
 class User:
-    def __init__(self, username):
+    def __init__(self, sock, sock_lock):
         self.connection_time = time.time()
-        self.username = username
+        self.username = None
         self.member_groups: List[Group] = []
+        self.connected = True
+        self.sock = sock
+        self.sock_lock = sock_lock
+
     
     def join_group(self, group: Group) -> Response:
         self.member_groups.append(group)
         try:
             group.join_user(self)
-        except:
+        except Exception as e:
             self.member_groups.remove(group)
-            return Response(Response.FAILED)
+            return Response(Response.FAILED, str(e))
         return Response(Response.OK)
         
     def leave_group(self, group: Group) -> Response:
@@ -34,12 +42,19 @@ class User:
                     Response.FAILED, 
                     f"Fatal server error"
                 )
-            
+
+    def leave_all_groups(self):
+        for group in self.member_groups:
+            try:
+                self.leave_group(group)
+            except:
+                pass
+
     def post_message(self, message: Message) -> Response:
         for group in self.member_groups:
             group.send_message(self, message)
         return Response(Response.OK)
-        
+
     def get_message(self, message_id) -> Tuple[Response, Message]:
         res, visible_messages = self.get_messages()
         try:
@@ -53,3 +68,26 @@ class User:
             Response(Response.OK), 
             [group.get_messages(self) for group in self.member_groups]
         )
+
+    def get_users(self)  -> Tuple[Response, List[Group]]:
+        return (
+            Response(Response.OK), 
+            List(set([item for sublist in [group.get_users() for group in self.member_groups] for item in sublist]))
+        )
+    
+    def in_group(self, group: Group):
+        return group in self.member_groups
+    
+    def get_all_groups(self):
+        return self.member_groups.copy()
+    
+    def disconnect(self):
+        self.connected = False
+        with self.sock_lock:
+            self.sock.close()
+        self.leave_all_groups()
+
+    # to string
+    def __str__(self):
+        return f"{self.username} - Connected at {datetime.datetime.fromtimestamp(self.connection_time).strftime('%c')}"
+        
