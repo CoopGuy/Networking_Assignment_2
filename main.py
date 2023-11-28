@@ -7,7 +7,7 @@ from typing import List
 import socket
 import Server
 from BulletinBoard import User, Message, Group, Response
-
+from ServerIO import send_socket_msg, send_socket_data
 HOST = "localhost"
 PORT = 65100
 
@@ -18,80 +18,15 @@ def read_socket(conn: socket.socket):
     msg = conn.recv(num).decode("utf-8")
     return msg
 
-def send_socket(user: User, json_str: str):
-    msg = json_str.encode('utf-8')
-    total_bytes_sent = 0
-    
-    with user.sock_lock:
-        msglen = len(msg).to_bytes(4, byteorder = 'big')
-        while total_bytes_sent < 4:
-            total_bytes_sent +=\
-                user.sock.send(msglen[total_bytes_sent:])
-
-        total_bytes_sent = 0
-
-        while total_bytes_sent < len(msg):
-            total_bytes_sent +=\
-                user.sock.send(msg[total_bytes_sent:])
-
-def send_socket_msg(user: User, msg):
-    json_str = {
-        "type": "status",
-        "message": msg
-    }
-    send_socket(user, json.dumps(json_str))
-
-def send_socket_data(type: str, user: User, data):
-    json_msg: str
-    match type:
-        case "%users" | "%groupusers":
-
-            data: List[str]
-            json_str = {
-                "type": "user",
-                "data": data
-            }
-            json_msg = json.dumps(json_str)
-
-        case "%message" | "%groupmessage":
-            data: List[Message]
-            sanitized_data = []
-            for msg in data:
-                sanitized_data.append({
-                    "id": msg.id,
-                    "timestamp": datetime.datetime.fromtimestamp(msg.post_date).strftime('%c'),
-                    "sender": str(msg.sender),
-                    "subject": msg.subject,
-                    "body": msg.body
-                })
-            json_str = {
-                "type": "user",
-                "data": sanitized_data
-            }
-            json_msg = json.dumps(json_str)
-
-        case "%groups":
-            data: List[Group]
-            data = [f"Group {i+1} id - {v.id}" for i, v in enumerate(data)]
-            json_str = {
-                "type": "groups",
-                "data": data
-            }
-            json_msg = json.dumps(json_str)
-    send_socket(user, json_msg)
-
 
 username_pool = []
 username_pool_lock = Lock()
 
 singleboard: Group = Group(1)
-multiboards: Group = [Group(i) for i in range(5)]
+multiboards: List[Group] = [Group(i) for i in range(5)]
 
 # singleboard_lock: Lock = Lock()
 # multiboards_lock: Lock = Lock()
-
-id = 0
-id_lock: Lock = Lock()
 
 def handleConnection(c):
     conn, addr = c
@@ -139,23 +74,20 @@ def handleConnection(c):
                     user.leave_all_groups()
                     res: Response = user.join_group(singleboard)
                     if res.is_Ok():
-                        send_socket_msg(user, "Successfully joined group")
+                        send_socket_msg(user, "Successfully joined public group")
                     else:
                         send_socket_msg(user, f"Error: {res.msg}")
             
             case "%post":
-                with id_lock:
-                    my_id = id
-                    id += 1
-                usrmsg: Message = Message(my_id, user, msg.args.subject, msg.args.body)
-                res: Response = user.post_message(usrmsg)
+                usrmsg: Message = Message(None, user, msg.args.subject, msg.args.body)
+                res: Response = user.post_message(singleboard, usrmsg)
                 if res.is_OK():
                     send_socket_msg(user, "Successfully posted message")
                 else:
-                    send_socket_msg(user, "Error: Failed to post message")
+                    send_socket_msg(user, f"Error: {res.msg}")
             
             case "%users":
-                send_socket_data("%users", user, user.get_users[1])
+                send_socket_data("%users", user, user.get_users(singleboard)[1])
             
             case "%leave":
                 res: Response = user.leave_group(singleboard)
@@ -166,10 +98,11 @@ def handleConnection(c):
             
             case "%message":
                 res: Response
-                messages: List[Message]
-                res, messages = user.get_messages()
+                message: Message
+                res, message = user.get_message(singleboard, msg.args.id)
+
                 if res.is_Ok():
-                    send_socket_data("%message", user, messages)
+                    send_socket_data("%message", user, message)
                 else:
                     send_socket_msg(user, f"Error: {res.msg}")
 
@@ -181,30 +114,37 @@ def handleConnection(c):
             
             case "%groupjoin":
                 try:
-                    i = next(i for i, _ in enumerate(multiboards) if lambda x: x.id == msg.args.groupid)
+                    i = next(i for i, x in enumerate(multiboards) if x.id == msg.args.groupid)
                     user.join_group(multiboards[i])
                     send_socket_msg(user, f"Successfully joined group")
                 except:
                     send_socket_msg(user, f"Failed to join group")
-
             
             case "%grouppost":
-                with id_lock:
-                    my_id = id
-                    id += 1
-                usrmsg: Message = Message(my_id, user, msg.args.subject, msg.args.body)
-                res: Response = user.post_message(usrmsg)
+                try:
+                    i = next(i for i, x in enumerate(multiboards) if x.id == msg.args.groupid)
+                except:
+                    send_socket_msg(user, "Error: Invalid group")
+                    continue
+                usrmsg: Message = Message(None, user, msg.args.subject, msg.args.body)
+                res: Response = user.post_message(multiboards[i], usrmsg)
                 if res.is_OK():
                     send_socket_msg(user, "Successfully posted message")
                 else:
                     send_socket_msg(user, "Error: Failed to post message")
             
             case "%groupusers":
-                send_socket_data("%groupusers", user, user.get_users[1])
+                try:
+                    i = next(i for i, x in enumerate(multiboards) if x.id == msg.args.groupid)
+                except:
+                    send_socket_msg(user, "Error: Invalid group")
+                    continue
+
+                send_socket_data("%groupusers", user, user.get_users(multiboards[i])[1])
             
             case "%groupleave":
                 try:
-                    i = next(i for i, _ in enumerate(multiboards) if lambda x: x.id == msg.args.groupid)
+                    i = next(i for i, x in enumerate(multiboards) if x.id == msg.args.groupid)
                     user.leave_group(multiboards[i])
                     send_socket_msg(user, f"Successfully left group")
                 except:

@@ -3,9 +3,9 @@ import time, datetime
 from threading import Lock
 from typing import List, Tuple
 
-from Group import Group
-from Message import Message
-from Response import Response
+from . import Group
+from . import Message
+from . import Response
 
 class User:
     def __init__(self, sock, sock_lock):
@@ -50,29 +50,33 @@ class User:
             except:
                 pass
 
-    def post_message(self, message: Message) -> Response:
-        for group in self.member_groups:
+    def post_message(self, group: Group, message: Message) -> Response:
+        try:
             group.send_message(self, message)
+        except:
+            return Response(Response.FAILED, "You are not a part of that group")
         return Response(Response.OK)
 
-    def get_message(self, message_id) -> Tuple[Response, Message]:
-        res, visible_messages = self.get_messages()
+    def get_message(self, group: Group,message_id) -> Tuple[Response, Message]:
+        if group not in self.member_groups:
+            return (Response(Response.FAILED, "You are not in that group"), None)
+        res, visible_messages = self.get_messages(group)
         try:
             msg = next(filter(lambda x: x.id == message_id, visible_messages))
             return (Response(Response.OK), msg)
         except:
-            return (Response(Response.FAILED, "Message is not visible or does not exist"), None)
+            return (Response(Response.FAILED, "Message does not exist"), None)
 
-    def get_messages(self) -> Tuple[Response, List[Message]]:
+    def get_messages(self, group: Group) -> Tuple[Response, List[Message]]:
         return (
             Response(Response.OK), 
-            [group.get_messages(self) for group in self.member_groups]
+            group.get_messages(self)
         )
 
-    def get_users(self)  -> Tuple[Response, List[str]]:
+    def get_users(self, group)  -> Tuple[Response, List[str]]:
         return (
             Response(Response.OK), 
-            List(set([str(item) for sublist in [group.get_users() for group in self.member_groups] for item in sublist]))
+            [str(x) for x in group.get_users()]
         )
     
     def in_group(self, group: Group):
@@ -82,8 +86,8 @@ class User:
         return self.member_groups.copy()
     
     def disconnect(self):
-        self.connected = False
         with self.sock_lock:
+            self.connected = False
             self.sock.close()
         self.leave_all_groups()
 

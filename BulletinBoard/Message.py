@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from User import User
+from . import User
 
 @dataclass
 class Message:

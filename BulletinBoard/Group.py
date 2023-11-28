@@ -1,29 +1,34 @@
 from threading import Lock
 from time import time
 from typing import List
-from Message import Message
-from User import User
+from . import Message
+from . import User
+from ServerIO import send_socket_data
 class Group:
     def __init__(self, id):
         self.id = id
+        self.idcounter = 0
         self.messages: List[Message] = []
         self.connected_users: List[User] = []
         self.lock: Lock = Lock()
     
     def send_message(self, user: User, message: Message):
-
         with self.lock:
             if user not in self.connected_users:
                 raise Exception("No such user in group")
             message.post_date = time()
+            message.idcounter = self.idcounter
+            self.idcounter += 1
             self.messages.append(message)
+            for user in self.connected_users:
+                send_socket_data("%message", user, [message])
 
     # yield all messages up to a time + 2
     def __msgs_up_to_time_plus_two__(self, time):
         if len(self.messages) == 0: return []
         
         try:
-            i = next(i for i, _ in enumerate(self.messages) if lambda x: x.post_date > time)
+            i = next(i for i, x in enumerate(self.messages) if x.post_date > time)
         except:
             i = len(self.messages) - 1
 
