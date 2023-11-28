@@ -69,10 +69,10 @@ class User:
             [group.get_messages(self) for group in self.member_groups]
         )
 
-    def get_users(self)  -> Tuple[Response, List[Group]]:
+    def get_users(self)  -> Tuple[Response, List[str]]:
         return (
             Response(Response.OK), 
-            List(set([item for sublist in [group.get_users() for group in self.member_groups] for item in sublist]))
+            List(set([str(item) for sublist in [group.get_users() for group in self.member_groups] for item in sublist]))
         )
     
     def in_group(self, group: Group):

@@ -3,7 +3,7 @@ from User import User
 
 @dataclass
 class Message:
-    id = id
+    id: int
     sender: User
     post_date = None
     subject: str
