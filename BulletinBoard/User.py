@@ -57,7 +57,7 @@ class User:
             return Response(Response.FAILED, "You are not a part of that group")
         return Response(Response.OK)
 
-    def get_message(self, group: Group,message_id) -> Tuple[Response, Message]:
+    def get_message(self, group: Group, message_id) -> Tuple[Response, Message]:
         if group not in self.member_groups:
             return (Response(Response.FAILED, "You are not in that group"), None)
         res, visible_messages = self.get_messages(group)

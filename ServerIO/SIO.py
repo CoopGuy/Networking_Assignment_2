@@ -4,35 +4,38 @@ from typing import List
 import json
 import datetime
 
-def send_socket(user: User, json_str: str):
+def send_socket(sock, json_str: str):
     msg = json_str.encode('utf-8')
     total_bytes_sent = 0
-    
+    msglen = len(msg).to_bytes(4, byteorder = 'big')
+    while total_bytes_sent < 4:
+        total_bytes_sent +=\
+            sock.send(msglen[total_bytes_sent:])
+
+    total_bytes_sent = 0
+
+    while total_bytes_sent < len(msg):
+        total_bytes_sent +=\
+            sock.send(msg[total_bytes_sent:])
+
+def send_socket_user(user: User, json_str: str):
     with user.sock_lock:
         if not user.connected:
             return
-        msglen = len(msg).to_bytes(4, byteorder = 'big')
-        while total_bytes_sent < 4:
-            total_bytes_sent +=\
-                user.sock.send(msglen[total_bytes_sent:])
-
-        total_bytes_sent = 0
-
-        while total_bytes_sent < len(msg):
-            total_bytes_sent +=\
-                user.sock.send(msg[total_bytes_sent:])
+        send_socket(user.sock, json_str)
+        
 
 def send_socket_msg(user: User, msg):
     json_str = {
         "type": "status",
         "data": msg
     }
-    send_socket(user, json.dumps(json_str))
+    send_socket_user(user, json.dumps(json_str))
 
 def send_socket_data(type: str, user: User, data):
     json_msg: str
     match type:
-        case "%users" | "%groupusers":
+        case "users" | "groupusers":
 
             data: List[str]
             json_str = {
@@ -41,13 +44,13 @@ def send_socket_data(type: str, user: User, data):
             }
             json_msg = json.dumps(json_str)
 
-        case "%message" | "%groupmessage":
+        case "message" | "groupmessage":
             data: List[Message]
             sanitized_data = []
             for msg in data:
                 sanitized_data.append({
                     "id": msg.id,
-                    "timestamp": datetime.datetime.fromtimestamp(msg.post_date).strftime('%c'),
+                    "timestamp": datetime.datetime.fromtimestamp(msg.post_date).strftime('c'),
                     "sender": str(msg.sender),
                     "subject": msg.subject,
                     "body": msg.body
@@ -58,7 +61,7 @@ def send_socket_data(type: str, user: User, data):
             }
             json_msg = json.dumps(json_str)
 
-        case "%groups":
+        case "groups":
             data: List[Group]
             data = [f"Group {i+1} id - {v.id}" for i, v in enumerate(data)]
             json_str = {
@@ -66,7 +69,7 @@ def send_socket_data(type: str, user: User, data):
                 "data": data
             }
             json_msg = json.dumps(json_str)
-    send_socket(user, json_msg)
+    send_socket_user(user, json_msg)
 
 """
 

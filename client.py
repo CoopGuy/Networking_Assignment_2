@@ -2,92 +2,168 @@ import socket
 import threading
 import json
 
-BUFFER_SIZE = 1024
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+from ServerIO import send_socket
+#usage send_socket(sock, json.dumps(dict))
 
-def handle_server_messages():
-    while True:
-        try:
-            msg = client.recv(BUFFER_SIZE)
-            if msg:
-                msg_json = json.loads(msg)
-                if msg_json.get("type") == "exit":
-                    print("[DISCONNECTED] Disconnected from the server.")
+class Client:
+    def __init__(self, server_host, server_port):
+        self.server_host = server_host
+        self.server_port = server_port
+        self.username = None
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    def connect_to_server(self):
+        self.socket.connect((self.server_host, self.server_port))
+        print("Connected to the server.")
+
+
+    def send_message(self, command: str):
+        # parse into arguments
+        
+        listofargs = command.split(" ")
+        
+        #["%post", "id", "subject"]
+        match listofargs[0].removeprefix("%"):
+            case "connect":
+                try:
+                    self.connect_to_server(listofargs[1], listofargs[2])                    
+                except:
+                    print("Failed to connect to server")
+
+                try:
+                    self.send_message(listofargs[3])
+                except:
+                    pass
+
+            case "username":
+                command = "username"
+                args = {
+                    "name": listofargs[1]
+                }
+
+            case "join":
+                command = "join"
+                args = {}
+
+            case "post":
+                command = "post"
+                args = {
+                    "subject": listofargs[1],
+                    "body": " ".join(listofargs[2:])
+                }
+
+            case "users":
+                command = "users"
+                args = {}
+                
+            case "leave":
+                command = "leave"
+                args = {}
+                
+            case "message":
+                command = "message"
+                args = {
+                    "id": listofargs[1]
+                }
+            case "exit":
+                command = "exit"
+                args = {}
+                
+            case "groups": # begin group section
+                command = "groups"
+                args = {}
+
+            case "groupjoin":
+                command = "groupjoin"
+                args = {
+                    "groupid": listofargs[1]
+                }
+
+            case "grouppost":
+                command = "grouppost"
+                args = {
+                    "groupid": listofargs[1],
+                    "subject": listofargs[2],
+                    "body": " ".join(listofargs[3:])
+                }
+                
+            case "groupusers":
+                command = "groupusers"
+                args = {
+                    "groupid": listofargs[1]
+                }
+
+            case "groupleave":
+                command = "groupleave"
+                args = {
+                    "groupid": listofargs[1]
+                }
+            case "groupmessage":
+                command = "groupmessage"
+                args = {
+                    "groupid": listofargs[1],
+                    "msgid": listofargs[2]
+                }
+            case _:
+                pass
+        
+        # create dictionary
+        json_str = json.dumps({
+            "command": command,
+            "args": args
+        })
+        send_socket(self.socket, json_str)
+
+    def receive_messages(self):
+        while True:
+            try:
+                data = self.socket.recv(1024)
+                if not data:
                     break
-                elif msg_json.get("type") == "message":
-                    print(f"Message ID: {msg_json['message_id']}, Sender: {msg_json['sender']}, Post Date: {msg_json['post_date']}, Subject: {msg_json['subject']}")
-                elif msg_json.get("type") == "user_list":
-                    print(f"Users in the group: {', '.join(msg_json['users'])}")
-                elif msg_json.get("type") == "group_list":
-                    print(f"Available groups: {', '.join(msg_json['groups'])}")
-                elif msg_json.get("type") == "group_message":
-                    print(f"Group Message ID: {msg_json['message_id']}, Sender: {msg_json['sender']}, Post Date: {msg_json['post_date']}, Subject: {msg_json['subject']}")
-                else:
-                    print(f"[UNKNOWN MESSAGE] {msg_json}")
-            else:
+                print(data.decode())
+            except ConnectionResetError:
+                print("Connection to the server lost.")
                 break
-        except Exception as e:
-            print(f"[ERROR] {e}")
-            break
+            
+            
+    
+    def run(self):
+        self.connect_to_server()
 
-def send_message(msg_type, **kwargs):
-    message = {"type": msg_type, **kwargs}
-    client.send(json.dumps(message).encode())
+        receive_thread = threading.Thread(target=self.receive_messages)
+        receive_thread.start()
 
-def connect_to_server(address, port):
-    try:
-        client.connect((address, port))
-        print(f"[CONNECTED] Successfully connected to {address}:{port}")
-        server_thread = threading.Thread(target=handle_server_messages)
-        server_thread.start()
-        return True
-    except Exception as e:
-        print(f"[ERROR] Failed to connect to {address}:{port}. Error: {e}")
-        return False
+        while True:
+            command = input("Enter a command: %join, %leave, %post, %retrieve, %exit: \n").upper()
+            try:
+                self.send_message(command)
+            except:
+                if command == "%join":
+                    self.username = input("Enter a non-existent username to join: ")
+                    self.send_message(f"%join {self.username}")
 
-def main():
-    connected = False
-    while not connected:
-        cmd = input()
-        if cmd.startswith("%connect"):
-            _, address, port_str = cmd.split()
-            port = int(port_str)
-            print(f"[CONNECTING] Trying to connect to {address}:{port}...")
-            connected = connect_to_server(address, port)
+                elif command == "%leave":
+                    self.send_message("%leave")
+                    break
 
-    while True:
-        user_input = input("Enter command: ")
-        if user_input.startswith("%post"):
-            _, subject, content = user_input.split(" ", 2)
-            send_message("post", subject=subject, content=content)
-        elif user_input == "%users":
-            send_message("get_users")
-        elif user_input == "%leave":
-            send_message("leave")
-        elif user_input == "%message":
-            message_id = input("Enter message ID: ")
-            send_message("get_message", message_id=message_id)
-        elif user_input == "%groups":
-            send_message("get_groups")
-        elif user_input.startswith("%groupjoin"):
-            _, group_id = user_input.split()
-            send_message("join_group", group_id=group_id)
-        elif user_input.startswith("%grouppost"):
-            _, group_id, subject, content = user_input.split(" ", 3)
-            send_message("post_group", group_id=group_id, subject=subject, content=content)
-        elif user_input == "%groupusers":
-            send_message("get_group_users")
-        elif user_input.startswith("%groupleave"):
-            _, group_id = user_input.split()
-            send_message("leave_group", group_id=group_id)
-        elif user_input.startswith("%groupmessage"):
-            _, group_id, message_id = user_input.split()
-            send_message("get_group_message", group_id=group_id, message_id=message_id)
-        elif user_input == "%exit":
-            send_message("exit")
-            break
-        else:
-            print("[UNKNOWN COMMAND]")
+                elif command == "%post":
+                    message_content = input("Enter your message: ")
+                    self.send_message(f"%post {message_content}")
+
+                elif command == "%retrieve":
+                    message_id = input("Enter the message ID to retrieve: ")
+                    self.send_message(f"%retrieve {message_id}")
+
+                elif command == "%exit":
+                    self.send_message("%exit")
+                    break
+
+                else:
+                    print("Invalid command. Please enter: %join, %leave, %post, %retrieve, %exit")
 
 if __name__ == "__main__":
-    main()
+    server_host = "localhost"  
+    server_port = 65100  
+
+    client = Client(server_host, server_port)
+    client.run()
