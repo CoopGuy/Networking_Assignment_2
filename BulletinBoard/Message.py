@@ -1,4 +1,3 @@
-import time
 from dataclasses import dataclass
 from User import User
 
@@ -6,6 +5,6 @@ from User import User
 class Message:
     id = id
     sender: User
-    post_date = time.time()
+    post_date = None
     subject: str
     body: str
