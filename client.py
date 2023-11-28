@@ -7,15 +7,20 @@ from ServerIO import send_socket
 
 class Client:
     def __init__(self, server_host, server_port):
-        self.server_host = server_host
-        self.server_port = server_port
         self.username = None
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.connected = False
+        self.receive_thread = None
 
-    def connect_to_server(self):
-        self.socket.connect((self.server_host, self.server_port))
+    def connect_to_server(self, host, port):
+        self.socket.connect((host, int(port)))
+        self.receive_thread = threading.Thread(target=self.receive_messages)
+        self.receive_thread.start()
+        self.connected = True
         print("Connected to the server.")
 
+    def disconnect_from_server(self):
+        self.connected = False
 
     def send_message(self, command: str):
         # parse into arguments
@@ -23,17 +28,22 @@ class Client:
         listofargs = command.split(" ")
         
         #["%post", "id", "subject"]
-        match listofargs[0].removeprefix("%"):
+        if not self.connected and listofargs[0].removeprefix("%").lower() != "connect":
+            print("Must connect to server first")
+            return
+            
+        match listofargs[0].removeprefix("%").lower():
             case "connect":
                 try:
-                    self.connect_to_server(listofargs[1], listofargs[2])                    
+                    self.connect_to_server(listofargs[1], listofargs[2])               
                 except:
                     print("Failed to connect to server")
 
                 try:
-                    self.send_message(listofargs[3])
+                    self.send_message(" ".join(["%username", listofargs[2]]))
                 except:
                     pass
+                return  
 
             case "username":
                 command = "username"
@@ -65,9 +75,13 @@ class Client:
                 args = {
                     "id": listofargs[1]
                 }
+
             case "exit":
-                command = "exit"
-                args = {}
+                self.socket.close()
+                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.connected = False
+                print("Successfully disconnected from server")
+                return
                 
             case "groups": # begin group section
                 command = "groups"
@@ -115,7 +129,7 @@ class Client:
         send_socket(self.socket, json_str)
 
     def receive_messages(self):
-        while True:
+        while self.connected:
             try:
                 data = self.socket.recv(1024)
                 if not data:
@@ -124,42 +138,16 @@ class Client:
             except ConnectionResetError:
                 print("Connection to the server lost.")
                 break
-            
-            
-    
+        self.socket.close()
+
     def run(self):
-        self.connect_to_server()
-
-        receive_thread = threading.Thread(target=self.receive_messages)
-        receive_thread.start()
-
         while True:
-            command = input("Enter a command: %join, %leave, %post, %retrieve, %exit: \n").upper()
+            command = input("Enter a command: %join, %leave, %post, %retrieve, %exit: \n")
             try:
                 self.send_message(command)
             except:
-                if command == "%join":
-                    self.username = input("Enter a non-existent username to join: ")
-                    self.send_message(f"%join {self.username}")
-
-                elif command == "%leave":
-                    self.send_message("%leave")
-                    break
-
-                elif command == "%post":
-                    message_content = input("Enter your message: ")
-                    self.send_message(f"%post {message_content}")
-
-                elif command == "%retrieve":
-                    message_id = input("Enter the message ID to retrieve: ")
-                    self.send_message(f"%retrieve {message_id}")
-
-                elif command == "%exit":
-                    self.send_message("%exit")
-                    break
-
-                else:
-                    print("Invalid command. Please enter: %join, %leave, %post, %retrieve, %exit")
+                print("Invalid Command")
+                
 
 if __name__ == "__main__":
     server_host = "localhost"  

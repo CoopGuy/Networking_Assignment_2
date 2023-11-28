@@ -1,4 +1,3 @@
-from BulletinBoard import User, Message, Group
 from typing import List
 
 import json
@@ -18,21 +17,21 @@ def send_socket(sock, json_str: str):
         total_bytes_sent +=\
             sock.send(msg[total_bytes_sent:])
 
-def send_socket_user(user: User, json_str: str):
+def send_socket_user(user, json_str: str):
     with user.sock_lock:
         if not user.connected:
             return
         send_socket(user.sock, json_str)
         
 
-def send_socket_msg(user: User, msg):
+def send_socket_msg(user, msg):
     json_str = {
         "type": "status",
         "data": msg
     }
     send_socket_user(user, json.dumps(json_str))
 
-def send_socket_data(type: str, user: User, data):
+def send_socket_data(type: str, user, data):
     json_msg: str
     match type:
         case "users" | "groupusers":
@@ -45,7 +44,7 @@ def send_socket_data(type: str, user: User, data):
             json_msg = json.dumps(json_str)
 
         case "message" | "groupmessage":
-            data: List[Message]
+            data: List
             sanitized_data = []
             for msg in data:
                 sanitized_data.append({
@@ -62,7 +61,7 @@ def send_socket_data(type: str, user: User, data):
             json_msg = json.dumps(json_str)
 
         case "groups":
-            data: List[Group]
+            data: List
             data = [f"Group {i+1} id - {v.id}" for i, v in enumerate(data)]
             json_str = {
                 "type": "groups",
