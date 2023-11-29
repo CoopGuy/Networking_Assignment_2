@@ -3,10 +3,10 @@ class Response:
         0: "OK",
         1: "Failed"
     }
-    
+        
     OK = 0
     FAILED = 1
-
+    
     def __init__(self, status, msg = None):
         self.status = status
         if msg == None:

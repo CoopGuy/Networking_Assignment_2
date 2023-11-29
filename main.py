@@ -1,50 +1,46 @@
 import time
 import json
-import datetime
 from threading import Lock
-from typing import List
-
+from typing import List, Dict
 import socket
+import select
+
 import Server
 from BulletinBoard import User, Message, Group, Response
-from ServerIO import send_socket_msg, send_socket_data
-HOST = "localhost"
-PORT = 65100
-
-def read_socket(conn: socket.socket):
-    num = conn.recv(4)
-    num = int.from_bytes(num, byteorder='big')
-    if num > 100000: print("Large message from client received")
-    msg = conn.recv(num).decode("utf-8")
-    return msg
+from ServerIO import send_socket_msg, send_socket_data, read_socket
 
 
 username_pool = []
 username_pool_lock = Lock()
 
-singleboard: Group = Group(1)
-multiboards: List[Group] = [Group(i) for i in range(5)]
+singleboard: Group = Group(0)
+multiboards: List[Group] = [Group(i) for i in range(1,6)]
 
-# singleboard_lock: Lock = Lock()
-# multiboards_lock: Lock = Lock()
 
-def handleConnection(c):
-    conn, addr = c
+def handleConnection(conn: socket.socket, addr):
+    global process_exiting
+
     sock_lock: Lock = Lock()
     user: User = User(conn, sock_lock)
-    
+    buf = b""
+
     finished = False
-    while not finished:
+    while not finished and not process_exiting:
         try:
             try:
-                msg, finished = read_socket(conn)
-                if finished: continue
-            except:
+                readable, writable, errored = select.select([conn], [], [], 1)
+                if conn not in readable and conn not in errored:
+                    continue
+                msg, not_ok, buf = read_socket(conn, buf)
+                if not_ok: 
+                    finished = True
+                    continue
+            except Exception as e:
                 #TODO: support bad message handling
                 pass
             
             try:
-                msg = json.load(msg)
+                msg: Dict = json.loads(msg)
             except:
                 #TODO: support bad json format handling
                 pass
@@ -55,16 +51,19 @@ def handleConnection(c):
             if "args" not in msg.keys():
                 pass
 
-            if user.username == None and msg.command != "username":
+            if user.username == None and msg["command"] != "username":
                 send_socket_msg(user, "Error: No username selected")
             
-            match msg.command:
+            match msg["command"]:
                 case "username":
                     username = msg["args"]["name"]
-                    with username_pool_lock:
+                    with username_pool_lock: 
                         if username not in username_pool:
+                            if user.username != None:
+                                username_pool.remove(user.username)
                             username_pool.append(username)
                             user.username = username
+                            send_socket_msg(user, "Successfully set username")
                         else:
                             send_socket_msg(user, "Error: Username already in use")
                 
@@ -74,7 +73,7 @@ def handleConnection(c):
                     else:
                         user.leave_all_groups()
                         res: Response = user.join_group(singleboard)
-                        if res.is_Ok():
+                        if res.is_OK():
                             send_socket_msg(user, "Successfully joined public group")
                         else:
                             send_socket_msg(user, f"Error: {res.msg}")
@@ -92,7 +91,7 @@ def handleConnection(c):
                 
                 case "leave":
                     res: Response = user.leave_group(singleboard)
-                    if res.is_Ok():
+                    if res.is_OK():
                         send_socket_msg(user, "Successfully left group")
                     else:
                         send_socket_msg(user, f"Error: {res.msg}")
@@ -102,7 +101,7 @@ def handleConnection(c):
                     message: Message
                     res, message = user.get_message(singleboard, msg["args"]["id"])
 
-                    if res.is_Ok():
+                    if res.is_OK():
                         send_socket_data("message", user, message)
                     else:
                         send_socket_msg(user, f"Error: {res.msg}")
@@ -116,8 +115,11 @@ def handleConnection(c):
                 case "groupjoin":
                     try:
                         i = next(i for i, x in enumerate(multiboards) if x.id == msg["args"]["groupid"])
-                        user.join_group(multiboards[i])
-                        send_socket_msg(user, f"Successfully joined group")
+                        res: Message = user.join_group(multiboards[i])
+                        if res.is_OK():
+                            send_socket_msg(user, "Successfully joined group")
+                        else:
+                            send_socket_msg(user, f"Error: {res.msg}")
                     except:
                         send_socket_msg(user, f"Failed to join group")
                 
@@ -146,45 +148,60 @@ def handleConnection(c):
                 case "groupleave":
                     try:
                         i = next(i for i, x in enumerate(multiboards) if x.id == msg["args"]["groupid"])
-                        user.leave_group(multiboards[i])
-                        send_socket_msg(user, f"Successfully left group")
+                        res: Response = user.leave_group(multiboards[i])
+                        if res.is_OK():
+                            send_socket_msg(user, "Successfully left group")
+                        else:
+                            send_socket_msg(user, f"Error: {res.msg}")
                     except:
                         send_socket_msg(user, f"Error: Failed to leave group")
-                
+
                 case "groupmessage":
-                    res: Response
-                    messages: List[Message]
                     try:
                         i = next(i for i, x in enumerate(multiboards) if x.id == msg["args"]["groupid"])
                     except:
                         send_socket_msg(user, f"Error: Invalid group")
+                        continue
 
-                    res, messages = user.get_message(multiboards[i], msg["args"]["msgid"])
+                    res: Response
+                    message: Message
+                    res, message = user.get_message(multiboards[i], msg["args"]["msgid"])
 
-                    if res.is_Ok():
-                        send_socket_data("groupmessage", user, messages)
+                    if res.is_OK():
+                        send_socket_data("groupmessage", user, message)
                     else:
                         send_socket_msg(user, f"Error: {res.msg}")
                 
                 case _:
                     send_socket_msg(user, f"Error: unrecognized command")
-        except:
+        except ConnectionResetError as e:
+            print(f"User {user.username} forcibly disconnected")
+            with username_pool_lock: 
+                if user.username in username_pool:
+                    username_pool.remove(user.username)
+
+        except Exception as e:
             send_socket_msg(user, f"Error: Failed to execute %{msg['command']}")
             pass
-
 
     user.leave_all_groups()
     with username_pool_lock:
         username_pool.remove(user.username)
-
+    
+    conn.close()
+    print(f"{user.username} has disconnected")
     return
 
+process_exiting = False
 if __name__ == "__main__":
+    HOST = "localhost"
+    PORT = 65100
+
     BulletinBoardListener = Server.Server(HOST, PORT, handleConnection)
-    
     with BulletinBoardListener as BBL:
-        t = 0
-        while True:
-            print(f"Server has been running for {t} seconds")
-            time.sleep(10)
-            t += 10
+        try:
+            while True:
+                time.sleep(10)
+        except Exception as e:
+            pass
+    process_exiting = True

@@ -4,6 +4,7 @@ from typing import List
 from . import Message
 from . import User
 from ServerIO import send_socket_data
+
 class Group:
     def __init__(self, id):
         self.id = id
@@ -17,11 +18,11 @@ class Group:
             if user not in self.connected_users:
                 raise Exception("No such user in group")
             message.post_date = time()
-            message.idcounter = self.idcounter
+            message.id = self.idcounter
             self.idcounter += 1
             self.messages.append(message)
-            for user in self.connected_users:
-                send_socket_data("%message", user, [message])
+            for u in self.connected_users:
+                send_socket_data("message", u, [message])
 
     # yield all messages up to a time + 2
     def __msgs_up_to_time_plus_two__(self, time):

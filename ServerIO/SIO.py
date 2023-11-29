@@ -2,6 +2,30 @@ from typing import List
 
 import json
 import datetime
+import socket
+
+def read_socket(conn: socket.socket, buf=b""):
+    while len(buf) < 4:
+        tbuf = conn.recv(1024)
+        if len(tbuf) == 0:
+            return "", True, b""
+        buf += tbuf
+
+    num = int.from_bytes(buf[0:4], byteorder='big')
+
+    buf = buf[4:]
+
+    while len(buf) < num:
+        tdata = conn.recv(1024)
+        if len(tdata) == 0:
+            return "", True, b""
+        buf += tdata
+
+    msg = buf[0:num].decode("utf-8")
+
+    buf = buf[num:]
+
+    return msg, False, buf
 
 def send_socket(sock, json_str: str):
     msg = json_str.encode('utf-8')
@@ -16,13 +40,13 @@ def send_socket(sock, json_str: str):
     while total_bytes_sent < len(msg):
         total_bytes_sent +=\
             sock.send(msg[total_bytes_sent:])
+    
 
 def send_socket_user(user, json_str: str):
     with user.sock_lock:
         if not user.connected:
             return
         send_socket(user.sock, json_str)
-        
 
 def send_socket_msg(user, msg):
     json_str = {
@@ -35,7 +59,6 @@ def send_socket_data(type: str, user, data):
     json_msg: str
     match type:
         case "users" | "groupusers":
-
             data: List[str]
             json_str = {
                 "type": "user",

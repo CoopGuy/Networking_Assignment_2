@@ -1,37 +1,47 @@
 import socket
 import threading
 import json
+import select
 
-from ServerIO import send_socket
-#usage send_socket(sock, json.dumps(dict))
+from ServerIO import send_socket, read_socket
 
 class Client:
     def __init__(self, server_host, server_port):
-        self.username = None
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.receive_thread: threading.Thread = None
         self.connected = False
-        self.receive_thread = None
+        self.should_disconnect = False
 
     def connect_to_server(self, host, port):
         self.socket.connect((host, int(port)))
-        self.receive_thread = threading.Thread(target=self.receive_messages)
-        self.receive_thread.start()
         self.connected = True
+        try:
+            self.receive_thread = threading.Thread(target=self.receive_messages)
+            self.receive_thread.start()
+        except:
+            self.connected = False
+            raise
         print("Connected to the server.")
 
-    def disconnect_from_server(self):
+    def disconnect_from_server(self, noprint=False):
         self.connected = False
+        self.receive_thread.join()
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.receive_thread = None
+        if not noprint: print("Successfully disconnected from server")
 
     def send_message(self, command: str):
         # parse into arguments
-        
+        if self.should_disconnect:
+            self.should_disconnect = False
+            self.disconnect_from_server(noprint=True)
+
         listofargs = command.split(" ")
         
-        #["%post", "id", "subject"]
         if not self.connected and listofargs[0].removeprefix("%").lower() != "connect":
             print("Must connect to server first")
             return
-            
+
         match listofargs[0].removeprefix("%").lower():
             case "connect":
                 try:
@@ -40,10 +50,10 @@ class Client:
                     print("Failed to connect to server")
 
                 try:
-                    self.send_message(" ".join(["%username", listofargs[2]]))
+                    self.send_message(" ".join(["%username", listofargs[3]]))
                 except:
                     pass
-                return  
+                return
 
             case "username":
                 command = "username"
@@ -73,24 +83,21 @@ class Client:
             case "message":
                 command = "message"
                 args = {
-                    "id": listofargs[1]
+                    "id": int(listofargs[1])
                 }
 
             case "exit":
-                self.socket.close()
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.connected = False
-                print("Successfully disconnected from server")
+                self.disconnect_from_server()
                 return
                 
-            case "groups": # begin group section
+            case "groups":
                 command = "groups"
                 args = {}
 
             case "groupjoin":
                 command = "groupjoin"
                 args = {
-                    "groupid": listofargs[1]
+                    "groupid": int(listofargs[1])
                 }
 
             case "grouppost":
@@ -104,40 +111,56 @@ class Client:
             case "groupusers":
                 command = "groupusers"
                 args = {
-                    "groupid": listofargs[1]
+                    "groupid": int(listofargs[1])
                 }
 
             case "groupleave":
                 command = "groupleave"
                 args = {
-                    "groupid": listofargs[1]
+                    "groupid": int(listofargs[1])
                 }
+            
             case "groupmessage":
                 command = "groupmessage"
                 args = {
-                    "groupid": listofargs[1],
-                    "msgid": listofargs[2]
+                    "groupid": int(listofargs[1]),
+                    "msgid": int(listofargs[2])
                 }
+            
             case _:
-                pass
+                raise Exception("Invalid command")
         
-        # create dictionary
+        # create str for sending to server
         json_str = json.dumps({
             "command": command,
             "args": args
         })
+
         send_socket(self.socket, json_str)
 
     def receive_messages(self):
-        while self.connected:
+        global process_exiting
+        buf = b""
+        while self.connected and not process_exiting:
             try:
-                data = self.socket.recv(1024)
-                if not data:
-                    break
-                print(data.decode())
+                readable, writable, errored = select.select([self.socket], [], [], 1)
+                if self.socket not in readable and self.socket not in errored:
+                    continue
+                msg, not_ok, buf = read_socket(self.socket, buf)
+                if not_ok:
+                    raise ConnectionResetError()
+                else:
+                    msg = json.loads(msg)
+                    if msg["type"] == "status":
+                        print(msg["data"])
+                    else:
+                        print("Message received")
             except ConnectionResetError:
                 print("Connection to the server lost.")
+                self.should_disconnect = True
                 break
+            except Exception:
+                pass
         self.socket.close()
 
     def run(self):
@@ -148,10 +171,13 @@ class Client:
             except:
                 print("Invalid Command")
                 
-
+process_exiting = False
 if __name__ == "__main__":
     server_host = "localhost"  
-    server_port = 65100  
+    server_port = 65101 
 
     client = Client(server_host, server_port)
-    client.run()
+    try:
+        client.run()
+    except KeyboardInterrupt:
+        process_exiting = True

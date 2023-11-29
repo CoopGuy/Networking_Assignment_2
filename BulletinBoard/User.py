@@ -5,7 +5,7 @@ from typing import List, Tuple
 
 from . import Group
 from . import Message
-from . import Response
+from .Response import Response
 
 class User:
     def __init__(self, sock, sock_lock):
