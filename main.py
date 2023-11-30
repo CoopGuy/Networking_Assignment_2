@@ -110,6 +110,7 @@ def handleConnection(conn: socket.socket, addr):
                         send_socket_msg(user, f"Error: {res.msg}")
 
                 case "exit":
+                    print(f"{user.username} has disconnected")
                     finished = True
                 
                 case "groups":
@@ -195,7 +196,6 @@ def handleConnection(conn: socket.socket, addr):
     conn.close()
     if user.username == None:
         user.username = "unnamed user"
-    print(f"{user.username} has disconnected")
 
 process_exiting = False
 if __name__ == "__main__":
