@@ -37,8 +37,10 @@ class Client:
             self.disconnect_from_server(noprint=True)
 
         listofargs = command.split(" ")
-        
-        if not self.connected and listofargs[0].removeprefix("%").lower() != "connect":
+        command = listofargs[0].removeprefix("%").lower()
+        if not self.connected and command != "connect":
+            if command == "exit":
+                raise KeyboardInterrupt()
             print("Must connect to server first")
             return
 
@@ -103,7 +105,7 @@ class Client:
             case "grouppost":
                 command = "grouppost"
                 args = {
-                    "groupid": listofargs[1],
+                    "groupid": int(listofargs[1]),
                     "subject": listofargs[2],
                     "body": " ".join(listofargs[3:])
                 }
@@ -161,9 +163,9 @@ class Client:
                             print(group)
                     else:
                         msg["type"] == "messages"
-                        msgData = msg["data"][0]
-                        for x in msgData.keys():
-                            print(f"{x.capitalize()}: {msgData[x]}")
+                        for msgData in msg["data"]:
+                            for x in msgData.keys():
+                                print(f"{x.capitalize()}: {msgData[x]}")
                         print("")
             except ConnectionResetError:
                 print("Connection to the server lost.")
@@ -178,6 +180,8 @@ class Client:
             command = input("\nEnter a command: %join, %leave, %post, %message, %exit: \n")
             try:
                 self.send_message(command)
+            except KeyboardInterrupt:
+                raise
             except:
                 print("Invalid Command")
                 

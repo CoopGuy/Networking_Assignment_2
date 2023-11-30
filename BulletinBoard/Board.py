@@ -63,7 +63,7 @@ class Group:
         except:
             i = len(self.messages) - 1
 
-        i = max(i - 2, 0)
+        i = max(i - 1, 0)
         return self.messages[i:]
 
     def get_messages(self, user: User, alreadylocked = False):

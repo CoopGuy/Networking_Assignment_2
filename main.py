@@ -35,19 +35,19 @@ def handleConnection(conn: socket.socket, addr):
                     continue
             except Exception as e:
                 #TODO: support bad message handling
-                pass
+                continue
             
             try:
                 msg: Dict = json.loads(msg)
             except:
                 #TODO: support bad json format handling
-                pass
+                continue
 
             #TODO: handle json missing info
             if "command" not in msg.keys(): 
-                pass
+                continue
             if "args" not in msg.keys():
-                pass
+                continue
 
             if user.username == None and msg["command"] != "username":
                 send_socket_msg(user, "Error: No username selected")
@@ -170,9 +170,6 @@ def handleConnection(conn: socket.socket, addr):
                     res: Response
                     message: Message
                     res, message = user.get_message(multiboards[i], msg["args"]["msgid"])
-
-                    # msg of type Message can't be sent to SIO
-                    # directly or else it causes a circular import situation
                     
                     if res.is_OK():
                         send_socket_data("groupmessage", user, message)
@@ -192,11 +189,13 @@ def handleConnection(conn: socket.socket, addr):
             pass
 
     user.leave_all_groups()
-    with username_pool_lock:
-        username_pool.remove(user.username)
-    
+    if user.username != None:
+        with username_pool_lock:
+            username_pool.remove(user.username)
+        
     conn.close()
-    return
+    if user.username == None:
+        user.username = "unnamed user"
 
 process_exiting = False
 if __name__ == "__main__":
