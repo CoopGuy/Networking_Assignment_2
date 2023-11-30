@@ -51,8 +51,8 @@ class Group:
             message.id = self.idcounter
             self.idcounter += 1
             self.messages.append(message)
-            for u in self.connected_users:
-                send_socket_data("message", u, [message])
+            for users in self.connected_users:
+                send_socket_data("message", users, [message])
 
     # yield all messages up to a time + 2
     def __msgs_up_to_time_plus_two__(self, time):

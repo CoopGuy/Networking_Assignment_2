@@ -153,19 +153,27 @@ class Client:
                     msg = json.loads(msg)
                     if msg["type"] == "status":
                         print(msg["data"])
+                    elif msg["type"] == "user":
+                        print(msg["data"][0])
+                    elif msg["type"] == "groups":
+                        print(msg["data"])
                     else:
-                        print("Message received")
+                        msg["type"] == "messages"
+                        msgData = msg["data"][0]
+                        for x in msgData.keys():
+                            print(f"{x.capitalize()}: {msgData[x]}")
+                        print("")
             except ConnectionResetError:
                 print("Connection to the server lost.")
                 self.should_disconnect = True
                 break
-            except Exception:
+            except Exception as e:
                 pass
         self.socket.close()
 
     def run(self):
         while True:
-            command = input("Enter a command: %join, %leave, %post, %retrieve, %exit: \n")
+            command = input("\nEnter a command: %join, %leave, %post, %message, %exit: \n")
             try:
                 self.send_message(command)
             except:

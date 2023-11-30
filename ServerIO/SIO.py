@@ -69,14 +69,17 @@ def send_socket_data(type: str, user, data):
         case "message" | "groupmessage":
             data: List
             sanitized_data = []
-            for msg in data:
-                sanitized_data.append({
-                    "id": msg.id,
-                    "timestamp": datetime.datetime.fromtimestamp(msg.post_date).strftime('c'),
-                    "sender": str(msg.sender),
-                    "subject": msg.subject,
-                    "body": msg.body
-                })
+            try:
+                for msg in data:
+                    sanitized_data.append({
+                        "id": msg.id,
+                        "timestamp": datetime.datetime.fromtimestamp(msg.post_date).strftime("%Y-%m-%d %H:%M:%S"),
+                        "sender": str(msg.sender),
+                        "subject": msg.subject,
+                        "body": msg.body
+                    })
+            except Exception as e:
+                return
             json_str = {
                 "type": "messages",
                 "data": sanitized_data

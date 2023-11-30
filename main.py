@@ -87,12 +87,14 @@ def handleConnection(conn: socket.socket, addr):
                         send_socket_msg(user, f"Error: {res.msg}")
                 
                 case "users":
-                    send_socket_data("users", user, user.get_users(singleboard)[1])
+                    send_socket_data("users", user, user.get_users(singleboard))
                 
                 case "leave":
                     res: Response = user.leave_group(singleboard)
                     if res.is_OK():
                         send_socket_msg(user, "Successfully left group")
+                        for user in singleboard.connected_users:
+                            send_socket_msg(user, f"User {user.username} left the group")
                     else:
                         send_socket_msg(user, f"Error: {res.msg}")
                 
@@ -102,7 +104,7 @@ def handleConnection(conn: socket.socket, addr):
                     res, message = user.get_message(singleboard, msg["args"]["id"])
 
                     if res.is_OK():
-                        send_socket_data("message", user, message)
+                        send_socket_data("message", user, [message])
                     else:
                         send_socket_msg(user, f"Error: {res.msg}")
 
@@ -110,23 +112,27 @@ def handleConnection(conn: socket.socket, addr):
                     finished = True
                 
                 case "groups":
-                    send_socket_data("groups", user, user.get_all_groups())
+                    boardListAsString = ""
+                    for boards in multiboards:
+                        boardListAsString = boardListAsString + "\nGroup " + str(boards.id)
+                    send_socket_msg(user, boardListAsString)
                 
                 case "groupjoin":
                     try:
                         i = next(i for i, x in enumerate(multiboards) if x.id == msg["args"]["groupid"])
+                        i = i + 1
                         res: Message = user.join_group(multiboards[i])
                         if res.is_OK():
-                            send_socket_msg(user, "Successfully joined group")
+                            send_socket_msg(user, f"Successfully joined group {i}")
                         else:
                             send_socket_msg(user, f"Error: {res.msg}")
-                    except:
+                    except Exception as e:
                         send_socket_msg(user, f"Failed to join group")
                 
                 case "grouppost":
                     try:
                         i = next(i for i, x in enumerate(multiboards) if x.id == msg["args"]["groupid"])
-                    except:
+                    except Exception as e:
                         send_socket_msg(user, "Error: Invalid group")
                         continue
                     usrmsg: Message = Message(None, user, msg["args"]["subject"], msg["args"]["body"])
@@ -167,6 +173,9 @@ def handleConnection(conn: socket.socket, addr):
                     message: Message
                     res, message = user.get_message(multiboards[i], msg["args"]["msgid"])
 
+                    # msg of type Message can't be sent to SIO
+                    # directly or else it causes a circular import situation
+                    
                     if res.is_OK():
                         send_socket_data("groupmessage", user, message)
                     else:
