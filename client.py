@@ -4,14 +4,24 @@ import json
 import select
 
 from ServerIO import send_socket, read_socket
-
+"""
+Client Class is the representation of a client process.
+This process can send data and commands to the server on
+behalf of the user, and does some parsing for the server
+as well.
+"""
 class Client:
+    # Define socket logic and connectivity status bools
     def __init__(self, server_host, server_port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.receive_thread: threading.Thread = None
         self.connected = False
         self.should_disconnect = False
 
+    """
+    Connect to the serve via socket connection on a predefined port number.
+    This also starts the receiver thread, which will listen for feedback from the server
+    """
     def connect_to_server(self, host, port):
         self.socket.connect((host, int(port)))
         self.connected = True
@@ -23,6 +33,10 @@ class Client:
             raise
         print("Connected to the server.")
 
+    """
+    Disconnects from the server by joining the receiver thread
+    and closing the connection
+    """
     def disconnect_from_server(self, noprint=False):
         self.connected = False
         self.receive_thread.join()
@@ -30,12 +44,17 @@ class Client:
         self.receive_thread = None
         if not noprint: print("Successfully disconnected from server")
 
+    """
+    Depending on the command, this function will parse and package
+    the command into a dictionary which will easily be processed into
+    JSON. 
+    """
     def send_message(self, command: str):
-        # parse into arguments
         if self.should_disconnect:
             self.should_disconnect = False
             self.disconnect_from_server(noprint=True)
 
+        # parse into arguments
         listofargs = command.split(" ")
         command = listofargs[0].removeprefix("%").lower()
         if not self.connected and command != "connect":
@@ -43,7 +62,8 @@ class Client:
                 raise KeyboardInterrupt()
             print("Must connect to server first")
             return
-
+        
+        # switch statement determines how to package dictionary for server
         match listofargs[0].removeprefix("%").lower():
             case "connect":
                 try:
@@ -138,8 +158,14 @@ class Client:
             "args": args
         })
 
+        #send data to server
         send_socket(self.socket, json_str)
-
+    """
+    This function receives data from the server via the listening thread
+    and unpacks the JSON and dictionaries according to their type.
+    It then prints the data to the terminal in order to communicate
+    to the user about what is happening on the server side.
+    """
     def receive_messages(self):
         global process_exiting
         buf = b""
@@ -175,6 +201,11 @@ class Client:
                 pass
         self.socket.close()
 
+    """
+    Run is the thread that continually takes in the user's input
+    and sends it through the send_message command. It will not stop
+    running until the user stops the process.
+    """
     def run(self):
         while True:
             command = input("\nEnter a command: %join, %leave, %post, %message, %exit: \n")
