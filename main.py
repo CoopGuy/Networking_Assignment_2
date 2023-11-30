@@ -188,12 +188,14 @@ def handleConnection(conn: socket.socket, addr):
             pass
 
     user.leave_all_groups()
-    with username_pool_lock:
-        username_pool.remove(user.username)
-    
+    if user.username != None:
+        with username_pool_lock:
+            username_pool.remove(user.username)
+        
     conn.close()
+    if user.username == None:
+        user.username = "unnamed user"
     print(f"{user.username} has disconnected")
-    return
 
 process_exiting = False
 if __name__ == "__main__":

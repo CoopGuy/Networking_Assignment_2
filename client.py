@@ -37,8 +37,10 @@ class Client:
             self.disconnect_from_server(noprint=True)
 
         listofargs = command.split(" ")
-        
-        if not self.connected and listofargs[0].removeprefix("%").lower() != "connect":
+        command = listofargs[0].removeprefix("%").lower()
+        if not self.connected and command != "connect":
+            if command == "exit":
+                raise KeyboardInterrupt()
             print("Must connect to server first")
             return
 
@@ -178,6 +180,8 @@ class Client:
             command = input("\nEnter a command: %join, %leave, %post, %message, %exit: \n")
             try:
                 self.send_message(command)
+            except KeyboardInterrupt:
+                raise
             except:
                 print("Invalid Command")
                 
