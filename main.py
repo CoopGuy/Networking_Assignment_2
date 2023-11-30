@@ -9,13 +9,11 @@ import Server
 from BulletinBoard import User, Message, Group, Response
 from ServerIO import send_socket_msg, send_socket_data, read_socket
 
-
 username_pool = []
 username_pool_lock = Lock()
 
 singleboard: Group = Group(0)
 multiboards: List[Group] = [Group(i) for i in range(1,6)]
-
 
 def handleConnection(conn: socket.socket, addr):
     global process_exiting
@@ -29,10 +27,10 @@ def handleConnection(conn: socket.socket, addr):
         try:
             try:
                 readable, writable, errored = select.select([conn], [], [], 1)
-                if conn not in readable and conn not in errored:
-                    continue
+                skip = conn not in readable and conn not in errored
+                if skip: continue
                 msg, not_ok, buf = read_socket(conn, buf)
-                if not_ok: 
+                if not_ok:
                     finished = True
                     continue
             except Exception as e:
@@ -53,6 +51,7 @@ def handleConnection(conn: socket.socket, addr):
 
             if user.username == None and msg["command"] != "username":
                 send_socket_msg(user, "Error: No username selected")
+                continue
             
             match msg["command"]:
                 case "username":
@@ -87,14 +86,16 @@ def handleConnection(conn: socket.socket, addr):
                         send_socket_msg(user, f"Error: {res.msg}")
                 
                 case "users":
-                    send_socket_data("users", user, user.get_users(singleboard))
+                    res, usrs = user.get_users(singleboard)
+                    if len(usrs) == 0:
+                        send_socket_msg(user, "No users connected to that group")
+                    else:
+                        send_socket_data("users", user, usrs)
                 
                 case "leave":
                     res: Response = user.leave_group(singleboard)
                     if res.is_OK():
                         send_socket_msg(user, "Successfully left group")
-                        for user in singleboard.connected_users:
-                            send_socket_msg(user, f"User {user.username} left the group")
                     else:
                         send_socket_msg(user, f"Error: {res.msg}")
                 
@@ -112,18 +113,14 @@ def handleConnection(conn: socket.socket, addr):
                     finished = True
                 
                 case "groups":
-                    boardListAsString = ""
-                    for boards in multiboards:
-                        boardListAsString = boardListAsString + "\nGroup " + str(boards.id)
-                    send_socket_msg(user, boardListAsString)
+                    send_socket_data("groups", user, multiboards)
                 
                 case "groupjoin":
                     try:
                         i = next(i for i, x in enumerate(multiboards) if x.id == msg["args"]["groupid"])
-                        i = i + 1
                         res: Message = user.join_group(multiboards[i])
                         if res.is_OK():
-                            send_socket_msg(user, f"Successfully joined group {i}")
+                            send_socket_msg(user, f"Successfully joined group {multiboards[i].id}")
                         else:
                             send_socket_msg(user, f"Error: {res.msg}")
                     except Exception as e:

@@ -154,9 +154,11 @@ class Client:
                     if msg["type"] == "status":
                         print(msg["data"])
                     elif msg["type"] == "user":
-                        print(msg["data"][0])
+                        for user in msg["data"]:
+                            print(user)
                     elif msg["type"] == "groups":
-                        print(msg["data"])
+                        for group in msg["data"]:
+                            print(group)
                     else:
                         msg["type"] == "messages"
                         msgData = msg["data"][0]

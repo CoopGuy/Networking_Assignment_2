@@ -6,7 +6,7 @@ from typing import List, Tuple
 import time, datetime
 from threading import Lock
 
-from ServerIO import send_socket_data
+from ServerIO import send_socket_data, send_socket_msg
 
 @dataclass
 class Message:
@@ -51,8 +51,8 @@ class Group:
             message.id = self.idcounter
             self.idcounter += 1
             self.messages.append(message)
-            for users in self.connected_users:
-                send_socket_data("message", users, [message])
+            for u in self.connected_users:
+                send_socket_data("message", u, [message])
 
     # yield all messages up to a time + 2
     def __msgs_up_to_time_plus_two__(self, time):
@@ -66,8 +66,9 @@ class Group:
         i = max(i - 2, 0)
         return self.messages[i:]
 
-    def get_messages(self, user: User):
-        with self.lock:
+    def get_messages(self, user: User, alreadylocked = False):
+        lock = self.lock if not alreadylocked else Lock()
+        with lock:
             if user not in self.connected_users:
                 raise Exception("No such user in group")
             if len(self.messages) < 2: 
@@ -80,11 +81,28 @@ class Group:
             if user.username in [user.username for user in self.connected_users]:
                 raise Exception("User already in group")
             self.connected_users.append(user)
+            for member in self.connected_users:
+                if member is user: continue
+                try:
+                    send_socket_msg(member, f"{user.username} has connected to group {self.id}")
+                except:
+                    print(f"Failed to notify a user in group {self.id} of user join")
+            try:
+                send_socket_data("message", user, self.get_messages(user, True))
+            except:
+                print("Failed to send joining user stored messages")
+            
     def disconnect_user(self, user: User):
         with self.lock:
             if user.username not in [user.username for user in self.connected_users]:
                 raise Exception("User not in group")
             self.connected_users.remove(user)
+            for member in self.connected_users:
+                if member is user: continue
+                try:
+                    send_socket_msg(member, f"{user.username} has disconnected from goup {self.id}")
+                except:
+                    print(f"Failed to notify a user in group {self.id} of user leave")
 
     def is_member(self, user: User):
         with self.lock:
@@ -159,7 +177,7 @@ class User:
             group.get_messages(self)
         )
 
-    def get_users(self, group)  -> Tuple[Response, List[str]]:
+    def get_users(self, group: Group)  -> Tuple[Response, List[str]]:
         return (
             Response(Response.OK), 
             [str(x) for x in group.get_users()]
