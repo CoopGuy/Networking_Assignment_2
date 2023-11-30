@@ -103,7 +103,7 @@ class Client:
             case "grouppost":
                 command = "grouppost"
                 args = {
-                    "groupid": listofargs[1],
+                    "groupid": int(listofargs[1]),
                     "subject": listofargs[2],
                     "body": " ".join(listofargs[3:])
                 }
@@ -161,9 +161,9 @@ class Client:
                             print(group)
                     else:
                         msg["type"] == "messages"
-                        msgData = msg["data"][0]
-                        for x in msgData.keys():
-                            print(f"{x.capitalize()}: {msgData[x]}")
+                        for msgData in msg["data"]:
+                            for x in msgData.keys():
+                                print(f"{x.capitalize()}: {msgData[x]}")
                         print("")
             except ConnectionResetError:
                 print("Connection to the server lost.")
