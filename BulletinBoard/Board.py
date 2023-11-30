@@ -100,7 +100,7 @@ class Group:
             for member in self.connected_users:
                 if member is user: continue
                 try:
-                    send_socket_msg(member, f"{user.username} has disconnected from goup {self.id}")
+                    send_socket_msg(member, f"{user.username} has disconnected from group {self.id}")
                 except:
                     print(f"Failed to notify a user in group {self.id} of user leave")
 

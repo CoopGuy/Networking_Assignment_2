@@ -110,6 +110,7 @@ def handleConnection(conn: socket.socket, addr):
                         send_socket_msg(user, f"Error: {res.msg}")
 
                 case "exit":
+                    print(f"{user.username} has disconnected")
                     finished = True
                 
                 case "groups":
@@ -195,7 +196,6 @@ def handleConnection(conn: socket.socket, addr):
         username_pool.remove(user.username)
     
     conn.close()
-    print(f"{user.username} has disconnected")
     return
 
 process_exiting = False
