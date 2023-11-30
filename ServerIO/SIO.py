@@ -117,7 +117,6 @@ def send_socket_data(type: str, user, data):
     send_socket_user(user, json_msg)
 
 """
-
 /*
 type can be one of the following:
     status: 
